@@ -146,3 +146,8 @@ async def get_logs(limit: int = 100, db: AsyncSession = Depends(get_db)):
 @api_router.post("/seed", summary="Загрузить тестовые данные из ТЗ (Север, Юг, Органайзер, Контейнер, Корзина)")
 async def seed_data(db: AsyncSession = Depends(get_db)):
     return await SeedService.seed_data(db)
+
+
+@api_router.post("/reset", summary="Сбросить базу данных к стартовым значениям ТЗ")
+async def reset_data(db: AsyncSession = Depends(get_db)):
+    return await SeedService.reset_data(db)

@@ -1,0 +1,1167 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CheckStock — Где сейчас товар?</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            900: '#14532d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .tab-btn.active {
+            color: #16a34a;
+            border-bottom: 2px solid #16a34a;
+            font-weight: 600;
+        }
+        /* Тонкий красивый скроллбар */
+        ::-webkit-scrollbar { height: 6px; width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased">
+
+    <!-- Верхний навбар -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="h-16 flex items-center justify-between gap-4">
+                <!-- Логотип -->
+                <div class="flex items-center space-x-3 flex-shrink-0">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-emerald-400 flex items-center justify-center text-white shadow-md shadow-brand-500/20">
+                        <i class="fa-solid fa-boxes-stacked text-lg"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xl font-black tracking-tight text-slate-900">CheckStock</span>
+                            <span class="px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 rounded-full tracking-wide">LIVE</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400">Сквозной учёт остатков ФФ / FBO / FBS</p>
+                    </div>
+                </div>
+
+                <!-- Быстрый поиск в реальном времени -->
+                <div class="flex-1 max-w-md relative hidden sm:block">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <i class="fa-solid fa-magnifying-glass text-xs"></i>
+                    </div>
+                    <input type="text" id="searchInput" oninput="handleSearch(this.value)" placeholder="Поиск по названию или SKU (например: Контейнер, SKU-102)..." class="w-full pl-9 pr-8 py-1.5 text-xs bg-slate-100 hover:bg-slate-100/80 focus:bg-white border border-transparent focus:border-brand-500 rounded-lg outline-none transition-all">
+                    <button id="clearSearchBtn" onclick="clearSearch()" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 hidden">
+                        <i class="fa-solid fa-xmark text-xs"></i>
+                    </button>
+                </div>
+
+                <!-- Кнопки быстрого создания операций -->
+                <div class="flex items-center space-x-2 flex-shrink-0">
+                    <button onclick="openModal('modalIncome')" class="px-3 py-1.5 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg transition-colors flex items-center space-x-1.5 border border-emerald-200">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Приход</span>
+                    </button>
+                    <button onclick="openModal('modalMovement')" class="px-3 py-1.5 text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors flex items-center space-x-1.5 border border-blue-200">
+                        <i class="fa-solid fa-truck-ramp-box"></i>
+                        <span>Перемещение</span>
+                    </button>
+                    <button onclick="openModal('modalFbs')" class="px-3 py-1.5 text-xs font-semibold bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg transition-colors flex items-center space-x-1.5 border border-purple-200">
+                        <i class="fa-solid fa-cart-shopping"></i>
+                        <span>Заказ FBS</span>
+                    </button>
+                    <button onclick="openModal('modalFbo')" class="px-3 py-1.5 text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg transition-colors flex items-center space-x-1.5 border border-amber-200">
+                        <i class="fa-solid fa-plane-departure"></i>
+                        <span>FBO на WB</span>
+                    </button>
+                    <button onclick="resetData()" title="Сбросить базу к стартовым данным ТЗ" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all ml-1 border border-slate-200">
+                        <i class="fa-solid fa-rotate-left text-xs"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Вкладки приложения -->
+            <div class="flex space-x-6 border-t border-slate-100 text-xs">
+                <button onclick="switchTab('overview')" id="tabBtn-overview" class="tab-btn py-3 border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-800 transition-colors active flex items-center space-x-2">
+                    <i class="fa-solid fa-table-cells"></i>
+                    <span>Остатки (Матрица)</span>
+                </button>
+                <button onclick="switchTab('warehouses')" id="tabBtn-warehouses" class="tab-btn py-3 border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-800 transition-colors flex items-center space-x-2">
+                    <i class="fa-solid fa-warehouse"></i>
+                    <span>Склады ФФ</span>
+                    <span id="badgeWhCount" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-600 font-bold">2</span>
+                </button>
+                <button onclick="switchTab('shipments')" id="tabBtn-shipments" class="tab-btn py-3 border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-800 transition-colors flex items-center space-x-2">
+                    <i class="fa-solid fa-dolly"></i>
+                    <span>Отправки и в пути</span>
+                    <span id="badgeActiveShipments" class="hidden px-1.5 py-0.2 rounded-full text-[10px] bg-blue-100 text-blue-700 font-bold animate-pulse">0</span>
+                </button>
+                <button onclick="switchTab('logs')" id="tabBtn-logs" class="tab-btn py-3 border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-800 transition-colors flex items-center space-x-2">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                    <span>История операций</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Основная рабочая область -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-5">
+
+        <!-- Баннер горящих задач (товары требующие внимания) -->
+        <div id="urgentAlertBar" class="hidden bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-3.5 flex items-center justify-between shadow-xs">
+            <div class="flex items-center space-x-3 text-xs text-blue-900">
+                <div class="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center flex-shrink-0">
+                    <i class="fa-solid fa-truck-fast text-xs"></i>
+                </div>
+                <div>
+                    <span class="font-bold">Товары в пути требуют приёмки:</span>
+                    <span id="urgentAlertText" class="text-blue-700 ml-1">Есть перемещения, готовые к оприходованию.</span>
+                </div>
+            </div>
+            <button onclick="switchTab('shipments')" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors shadow-xs">
+                Перейти к приёмке →
+            </button>
+        </div>
+
+        <!-- Верхние сводные плашки "Где сейчас товар?" -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-base flex-shrink-0">
+                    <i class="fa-solid fa-boxes-stacked"></i>
+                </div>
+                <div>
+                    <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Всего доступно</div>
+                    <div class="text-lg font-black text-slate-900" id="statTotalAvailable">0 шт.</div>
+                </div>
+            </div>
+
+            <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-base flex-shrink-0">
+                    <i class="fa-solid fa-truck-arrow-right"></i>
+                </div>
+                <div>
+                    <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">В пути между ФФ</div>
+                    <div class="text-lg font-black text-blue-600" id="statTransitWh">0 шт.</div>
+                </div>
+            </div>
+
+            <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center text-base flex-shrink-0">
+                    <i class="fa-solid fa-plane-departure"></i>
+                </div>
+                <div>
+                    <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">В пути на WB (FBO)</div>
+                    <div class="text-lg font-black text-amber-600" id="statTransitFbo">0 шт.</div>
+                </div>
+            </div>
+
+            <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center text-base flex-shrink-0">
+                    <i class="fa-solid fa-truck-fast"></i>
+                </div>
+                <div>
+                    <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">В пути к клиенту (FBS)</div>
+                    <div class="text-lg font-black text-purple-600" id="statTransitFbs">0 шт.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ВКЛАДКА 1: МАТРИЦА ОСТАТКОВ (ЧИСТЫЙ ИНЖЕНЕРНЫЙ ВИД) -->
+        <section id="tab-overview" class="space-y-4">
+            <div class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+                <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                    <div>
+                        <h2 class="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                            <span>Сводная матрица остатков и движения</span>
+                            <span class="text-xs font-normal text-slate-400">| Быстрые действия в строке каждого товара</span>
+                        </h2>
+                    </div>
+                    <div class="flex items-center space-x-3 text-xs text-slate-500">
+                        <span class="flex items-center space-x-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span><span>Доступно</span></span>
+                        <span class="flex items-center space-x-1"><span class="w-2.5 h-2.5 rounded-full bg-purple-500 inline-block"></span><span>В резерве</span></span>
+                        <span class="flex items-center space-x-1"><span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span><span>В пути</span></span>
+                        <button onclick="loadOverview()" class="p-1.5 text-slate-400 hover:text-slate-700 rounded-md transition-colors" title="Обновить"><i class="fa-solid fa-arrows-rotate"></i></button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead id="overviewTableHead" class="bg-slate-100/70 border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider">
+                            <!-- Заголовки динамически формируются в JS под каждый склад -->
+                        </thead>
+                        <tbody id="overviewTableBody" class="divide-y divide-slate-100 font-medium">
+                            <tr>
+                                <td colspan="10" class="text-center py-10 text-slate-400">Загрузка данных...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ВКЛАДКА 2: СКЛАДЫ ФФ -->
+        <section id="tab-warehouses" class="space-y-4 hidden">
+            <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-5 space-y-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-sm font-bold text-slate-900">Склады фулфилмента (ФФ)</h2>
+                        <p class="text-xs text-slate-500">Управление складами, переименование и мягкое удаление (сохранение остатков и истории)</p>
+                    </div>
+                    <button onclick="openModal('modalAddWarehouse')" class="px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center space-x-1.5">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Добавить склад</span>
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3" id="warehousesGrid"></div>
+            </div>
+        </section>
+
+        <!-- ВКЛАДКА 3: ДВИЖЕНИЯ И ОТПРАВКИ -->
+        <section id="tab-shipments" class="space-y-5 hidden">
+            <!-- Таблица перемещений -->
+            <div class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+                <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-900">Внутренние перемещения между ФФ</h3>
+                        <p class="text-xs text-slate-500">Товары, находящиеся в транзите между складами сети</p>
+                    </div>
+                    <button onclick="openModal('modalMovement')" class="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold rounded-lg transition-colors border border-blue-200">
+                        + Новое перемещение
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-100/70 border-b border-slate-200 text-slate-600 uppercase font-semibold">
+                            <tr>
+                                <th class="py-2.5 px-3">ID</th>
+                                <th class="py-2.5 px-3">Товар / Артикул</th>
+                                <th class="py-2.5 px-3">Откуда</th>
+                                <th class="py-2.5 px-3">Куда</th>
+                                <th class="py-2.5 px-3 text-center">Кол-во</th>
+                                <th class="py-2.5 px-3">Статус</th>
+                                <th class="py-2.5 px-3 text-right">Действие</th>
+                            </tr>
+                        </thead>
+                        <tbody id="movementsTableBody" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Таблица внешних отправок (FBS и FBO) -->
+            <div class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+                <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-900">Отправки на маркетплейс (FBO) и заказы покупателей (FBS)</h3>
+                        <p class="text-xs text-slate-500">Управление резервами, отправкой и приёмкой</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="openModal('modalFbs')" class="px-3 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 text-xs font-semibold rounded-lg transition-colors border border-purple-200">
+                            + Заказ FBS
+                        </button>
+                        <button onclick="openModal('modalFbo')" class="px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 text-xs font-semibold rounded-lg transition-colors border border-amber-200">
+                            + Поставка FBO
+                        </button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-100/70 border-b border-slate-200 text-slate-600 uppercase font-semibold">
+                            <tr>
+                                <th class="py-2.5 px-3">Тип</th>
+                                <th class="py-2.5 px-3">Товар / Артикул</th>
+                                <th class="py-2.5 px-3">Склад ФФ</th>
+                                <th class="py-2.5 px-3 text-center">Кол-во</th>
+                                <th class="py-2.5 px-3">Назначение</th>
+                                <th class="py-2.5 px-3">Статус</th>
+                                <th class="py-2.5 px-3 text-right">Действие</th>
+                            </tr>
+                        </thead>
+                        <tbody id="shipmentsTableBody" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ВКЛАДКА 4: ЖУРНАЛ АУДИТА -->
+        <section id="tab-logs" class="space-y-4 hidden">
+            <div class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+                <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                    <div>
+                        <h2 class="text-sm font-bold text-slate-900">Журнал складского аудита (Event Ledger)</h2>
+                        <p class="text-xs text-slate-500">Несгораемая история всех операций: списания, перемещения, приходы</p>
+                    </div>
+                    <button onclick="loadLogs()" class="p-1.5 text-slate-400 hover:text-slate-700 rounded-md transition-colors"><i class="fa-solid fa-arrows-rotate"></i></button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-100/70 border-b border-slate-200 text-slate-600 uppercase font-semibold">
+                            <tr>
+                                <th class="py-2.5 px-3">Время (UTC)</th>
+                                <th class="py-2.5 px-3">Операция</th>
+                                <th class="py-2.5 px-3">Товар</th>
+                                <th class="py-2.5 px-3">Откуда</th>
+                                <th class="py-2.5 px-3">Куда</th>
+                                <th class="py-2.5 px-3 text-center">Кол-во</th>
+                                <th class="py-2.5 px-3">Комментарий</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logsTableBody" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- МОДАЛЬНЫЕ ОКНА ОПЕРАЦИЙ -->
+
+    <!-- Модалка: Приход -->
+    <div id="modalIncome" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-xl max-w-sm w-full p-5 shadow-xl space-y-3 m-4 border border-slate-200">
+            <div class="flex items-center justify-between border-b pb-2.5">
+                <h3 class="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                    <i class="fa-solid fa-arrow-down text-emerald-600"></i>
+                    <span>Оформить приход товара</span>
+                </h3>
+                <button onclick="closeModal('modalIncome')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-sm"></i></button>
+            </div>
+            <form onsubmit="handleIncomeSubmit(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-600 mb-1">Товар</label>
+                    <select id="incomeProduct" required class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-brand-500 outline-none"></select>
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-600 mb-1">Склад назначения</label>
+                    <select id="incomeWarehouse" required class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-brand-500 outline-none"></select>
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-600 mb-1">Количество единиц</label>
+                    <input type="number" id="incomeQty" min="1" value="10" required class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-brand-500 outline-none">
+                </div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closeModal('modalIncome')" class="px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg">Отмена</button>
+                    <button type="submit" class="px-4 py-1.5 font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-xs">Оприходовать</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модалка: Перемещение -->
+    <div id="modalMovement" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-xl max-w-sm w-full p-5 shadow-xl space-y-3 m-4 border border-slate-200">
+            <div class="flex items-center justify-between border-b pb-2.5">
+                <h3 class="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                    <i class="fa-solid fa-truck-ramp-box text-blue-600"></i>
+                    <span>Перемещение между ФФ</span>
+                </h3>
+                <button onclick="closeModal('modalMovement')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-sm"></i></button>
+            </div>
+            <form onsubmit="handleMovementSubmit(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-600 mb-1">Товар</label>
+                    <select id="movementProduct" required class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block font-semibold text-slate-600 mb-1">Откуда</label>
+                        <select id="movementFromWarehouse" required class="w-full border border-slate-300 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-600 mb-1">Куда</label>
+                        <select id="movementToWarehouse" required class="w-full border border-slate-300 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-600 mb-1">Количество</label>
+                    <input type="number" id="movementQty" min="1" value="2" required class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closeModal('modalMovement')" class="px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg">Отмена</button>
+                    <button type="submit" class="px-4 py-1.5 font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-xs">Отправить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модалка: Резерв FBS -->
+    <div id="modalFbs" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-xl max-w-sm w-full p-5 shadow-xl space-y-3 m-4 border border-slate-200">
+            <div class="flex items-center justify-between border-b pb-2.5">
+                <h3 class="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                    <i class="fa-solid fa-cart-shopping text-purple-600"></i>
+                    <span>Заказ FBS (Блокировка в резерв)</span>
+                </h3>
+                <button onclick="closeModal('modalFbs')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-sm"></i></button>
+            </div>
+            <form onsubmit="handleFbsSubmit(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-600 mb-1">Товар</label>
+                    <select id="fbsProduct" required class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-purple-500 outline-none"></select>
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-600 mb-1">Склад комплектации</label>
+                    <select id="fbsWarehouse" required class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-purple-500 outline-none"></select>
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-600 mb-1">Количество</label>
+                    <input type="number" id="fbsQty" min="1" value="2" required class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-purple-500 outline-none">
+                </div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closeModal('modalFbs')" class="px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg">Отмена</button>
+                    <button type="submit" class="px-4 py-1.5 font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow-xs">Зарезервировать</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модалка: Отгрузка FBO -->
+    <div id="modalFbo" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-xl max-w-sm w-full p-5 shadow-xl space-y-3 m-4 border border-slate-200">
+            <div class="flex items-center justify-between border-b pb-2.5">
+                <h3 class="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                    <i class="fa-solid fa-plane-departure text-amber-600"></i>
+                    <span>Поставка FBO (на маркетплейс)</span>
+                </h3>
+                <button onclick="closeModal('modalFbo')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-sm"></i></button>
+            </div>
+            <form onsubmit="handleFboSubmit(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-600 mb-1">Товар</label>
+                    <select id="fboProduct" required class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-amber-500 outline-none"></select>
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-600 mb-1">Склад отгрузки</label>
+                    <select id="fboWarehouse" required class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-amber-500 outline-none"></select>
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-600 mb-1">Склад WB/Ozon назначения</label>
+                    <input type="text" id="fboDest" value="Склад маркетплейса Коледино" required class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-amber-500 outline-none">
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-600 mb-1">Количество</label>
+                    <input type="number" id="fboQty" min="1" value="3" required class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-amber-500 outline-none">
+                </div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closeModal('modalFbo')" class="px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg">Отмена</button>
+                    <button type="submit" class="px-4 py-1.5 font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-lg shadow-xs">Отгрузить на маркетплейс</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модалка: Добавление склада -->
+    <div id="modalAddWarehouse" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-xl max-w-xs w-full p-5 shadow-xl space-y-3 m-4 border border-slate-200">
+            <div class="flex items-center justify-between border-b pb-2.5">
+                <h3 class="text-sm font-bold text-slate-900">Новый склад ФФ</h3>
+                <button onclick="closeModal('modalAddWarehouse')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-sm"></i></button>
+            </div>
+            <form onsubmit="handleAddWarehouse(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-600 mb-1">Название склада</label>
+                    <input type="text" id="addWhName" placeholder="Например: Восток" required class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-brand-500 outline-none">
+                </div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closeModal('modalAddWarehouse')" class="px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg">Отмена</button>
+                    <button type="submit" class="px-4 py-1.5 font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-lg shadow-xs">Создать склад</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- УМНЫЙ АЛЕРТ НЕХВАТКИ ТОВАРА (КЛЮЧЕВОЙ КЕЙС ТЗ!) -->
+    <div id="shortageModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-3 m-4 border-2 border-red-500">
+            <div class="flex items-start space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0 text-lg">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <div class="flex-1">
+                    <h3 class="text-sm font-bold text-slate-900">Обнаружена нехватка на выбранном складе</h3>
+                    <p class="text-[11px] text-slate-500">Система проверила остатки по другим складам сети</p>
+                </div>
+                <button onclick="closeShortageModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-sm"></i></button>
+            </div>
+
+            <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-2" id="shortageContent"></div>
+
+            <div class="flex justify-end space-x-2 pt-2">
+                <button onclick="closeShortageModal()" class="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg">Закрыть</button>
+                <button id="shortageTransferBtn" class="px-4 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-xs flex items-center space-x-1.5">
+                    <i class="fa-solid fa-truck-ramp-box"></i>
+                    <span>Оформить перемещение</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Уведомления (Toast) -->
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 space-y-2 pointer-events-none"></div>
+
+    <!-- КЛИЕНТСКИЙ СКРИПТ -->
+    <script>
+        let currentTab = 'overview';
+        let rawOverviewData = [];
+        let productsCache = [];
+        let warehousesCache = [];
+        let searchQuery = '';
+
+        // Переключение вкладок
+        function switchTab(tab) {
+            currentTab = tab;
+            ['overview', 'warehouses', 'shipments', 'logs'].forEach(t => {
+                document.getElementById(`tab-${t}`).classList.add('hidden');
+                document.getElementById(`tabBtn-${t}`).classList.remove('active');
+            });
+            document.getElementById(`tab-${tab}`).classList.remove('hidden');
+            document.getElementById(`tabBtn-${tab}`).classList.add('active');
+
+            if (tab === 'overview') loadOverview();
+            if (tab === 'warehouses') loadWarehouses();
+            if (tab === 'shipments') loadShipments();
+            if (tab === 'logs') loadLogs();
+        }
+
+        function showToast(msg, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            const bg = type === 'success' ? 'bg-emerald-600' : (type === 'error' ? 'bg-red-600' : 'bg-slate-800');
+            const icon = type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation';
+
+            toast.className = `${bg} text-white px-3.5 py-2.5 rounded-xl shadow-lg flex items-center space-x-2 text-xs transition-all transform translate-y-2 duration-200 pointer-events-auto`;
+            toast.innerHTML = `<i class="fa-solid ${icon}"></i><span>${msg}</span>`;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-4');
+                setTimeout(() => toast.remove(), 250);
+            }, 3000);
+        }
+
+        // Поиск
+        function handleSearch(val) {
+            searchQuery = val.trim().toLowerCase();
+            document.getElementById('clearSearchBtn').classList.toggle('hidden', searchQuery === '');
+            renderOverviewTable();
+        }
+        function clearSearch() {
+            document.getElementById('searchInput').value = '';
+            handleSearch('');
+        }
+
+        // Открытие модалок
+        function openModal(id, preselectedProductId = null) {
+            populateSelects(preselectedProductId);
+            document.getElementById(id).classList.remove('hidden');
+        }
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+        function closeShortageModal() {
+            document.getElementById('shortageModal').classList.add('hidden');
+        }
+
+        // Заполнение селектов с опциональным автовыбором товара
+        function populateSelects(selectedProdId = null) {
+            const whOptions = warehousesCache.filter(w => w.is_active).map(w => `<option value="${w.id}">${w.name}</option>`).join('');
+            const prodOptions = productsCache.map(p => {
+                const sel = (selectedProdId && p.id === selectedProdId) ? 'selected' : '';
+                return `<option value="${p.id}" ${sel}>${p.sku} — ${p.name}</option>`;
+            }).join('');
+
+            ['incomeWarehouse', 'movementFromWarehouse', 'movementToWarehouse', 'fbsWarehouse', 'fboWarehouse'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = whOptions;
+            });
+
+            const toWh = document.getElementById('movementToWarehouse');
+            if (toWh && toWh.options.length > 1) toWh.selectedIndex = 1;
+
+            ['incomeProduct', 'movementProduct', 'fbsProduct', 'fboProduct'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = prodOptions;
+            });
+        }
+
+        // 1. Загрузка данных матрицы
+        async function loadOverview() {
+            try {
+                const [overviewRes, prodRes, whRes, movRes] = await Promise.all([
+                    fetch('/api/overview'),
+                    fetch('/api/products'),
+                    fetch('/api/warehouses'),
+                    fetch('/api/movements')
+                ]);
+                rawOverviewData = await overviewRes.json();
+                productsCache = await prodRes.json();
+                warehousesCache = await whRes.json();
+                const movements = await movRes.json();
+
+                // Обновляем бейдж складов
+                document.getElementById('badgeWhCount').innerText = warehousesCache.filter(w => w.is_active).length;
+
+                // Проверяем товары в пути для баннера горящих задач
+                const inTransitMovements = movements.filter(m => m.status === 'IN_TRANSIT');
+                const alertBar = document.getElementById('urgentAlertBar');
+                const badgeShip = document.getElementById('badgeActiveShipments');
+
+                if (inTransitMovements.length > 0) {
+                    alertBar.classList.remove('hidden');
+                    document.getElementById('urgentAlertText').innerText = 
+                        `В пути ${inTransitMovements.length} перемещение: ${inTransitMovements[0].product_name} (${inTransitMovements[0].quantity} шт.) направляется на склад ${inTransitMovements[0].to_warehouse_name}`;
+                    badgeShip.classList.remove('hidden');
+                    badgeShip.innerText = inTransitMovements.length;
+                } else {
+                    alertBar.classList.add('hidden');
+                    badgeShip.classList.add('hidden');
+                }
+
+                renderOverviewTable();
+            } catch (e) {
+                console.error(e);
+                showToast('Ошибка загрузки матрицы остатков', 'error');
+            }
+        }
+
+        // Отрисовка таблицы матрицы с четкими раздельными колонками
+        function renderOverviewTable() {
+            if (!rawOverviewData || rawOverviewData.length === 0) return;
+
+            let totalAvailableAll = 0;
+            let totalTransitWh = 0;
+            let totalTransitFbo = 0;
+            let totalTransitFbs = 0;
+
+            const warehouses = warehousesCache; // все склады (включая архивные)
+
+            // 1. Формируем заголовок таблицы
+            const thead = document.getElementById('overviewTableHead');
+            let whHeaders = warehouses.map(w => `
+                <th colspan="3" class="py-2 px-2 text-center border-l border-slate-200 ${w.is_active ? 'bg-slate-100/90 text-slate-700' : 'bg-red-50 text-red-700'}">
+                    <span>${w.name}</span>
+                    ${w.is_active ? '' : '<span class="text-[9px] text-red-500 block font-normal">(Архив)</span>'}
+                </th>
+            `).join('');
+
+            thead.innerHTML = `
+                <tr>
+                    <th rowspan="2" class="py-2.5 px-3 border-r border-slate-200">Товар / Артикул</th>
+                    ${whHeaders}
+                    <th colspan="3" class="py-2 px-2 text-center border-l-2 border-slate-300 bg-emerald-50 text-emerald-800">Всего по сети</th>
+                    <th colspan="3" class="py-2 px-2 text-center border-l-2 border-slate-300 bg-blue-50 text-blue-800">Товары в пути</th>
+                    <th rowspan="2" class="py-2.5 px-3 text-right border-l border-slate-200">Быстрые действия</th>
+                </tr>
+                <tr class="text-[10px] text-slate-500 bg-slate-50 border-t border-slate-200">
+                    ${warehouses.map(() => `
+                        <th class="py-1 px-1.5 text-center border-l border-slate-200 font-normal">Физ</th>
+                        <th class="py-1 px-1.5 text-center font-normal text-purple-600">Рез</th>
+                        <th class="py-1 px-1.5 text-center font-bold text-emerald-700">Дост</th>
+                    `).join('')}
+                    <th class="py-1 px-1.5 text-center border-l-2 border-slate-300 font-normal">Физ</th>
+                    <th class="py-1 px-1.5 text-center font-normal text-purple-600">Рез</th>
+                    <th class="py-1 px-1.5 text-center font-bold text-emerald-700">Дост</th>
+                    <th class="py-1 px-1 text-center border-l-2 border-slate-300 font-normal text-blue-600">ФФ</th>
+                    <th class="py-1 px-1 text-center font-normal text-amber-600">FBO</th>
+                    <th class="py-1 px-1 text-center font-normal text-purple-600">FBS</th>
+                </tr>
+            `;
+
+            // 2. Формируем строки
+            const tbody = document.getElementById('overviewTableBody');
+            tbody.innerHTML = '';
+
+            const filtered = rawOverviewData.filter(item => {
+                if (!searchQuery) return true;
+                return item.product_name.toLowerCase().includes(searchQuery) || item.sku.toLowerCase().includes(searchQuery);
+            });
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="${warehouses.length * 3 + 8}" class="py-8 text-center text-slate-400">Товары не найдены</td></tr>`;
+                return;
+            }
+
+            filtered.forEach(item => {
+                totalAvailableAll += item.total_available;
+                totalTransitWh += item.in_transit_between_wh;
+                totalTransitFbo += item.in_transit_fbo;
+                totalTransitFbs += item.in_transit_fbs;
+
+                const whCells = warehouses.map(w => {
+                    const stock = item.stocks_by_warehouse.find(s => s.warehouse_id === w.id) || {physical_qty: 0, reserved_fbs_qty: 0, available_qty: 0};
+                    const availColor = stock.available_qty > 0 ? 'text-emerald-700 font-bold bg-emerald-50/40' : 'text-slate-300';
+                    return `
+                        <td class="py-2.5 px-1.5 text-center border-l border-slate-100 text-slate-600">${stock.physical_qty || '<span class="text-slate-300">0</span>'}</td>
+                        <td class="py-2.5 px-1.5 text-center text-purple-600">${stock.reserved_fbs_qty || '<span class="text-slate-300">0</span>'}</td>
+                        <td class="py-2.5 px-1.5 text-center ${availColor}">${stock.available_qty}</td>
+                    `;
+                }).join('');
+
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50/80 transition-colors group';
+                tr.innerHTML = `
+                    <td class="py-2.5 px-3 border-r border-slate-100 whitespace-nowrap">
+                        <div class="font-bold text-slate-900">${item.product_name}</div>
+                        <div class="text-[10px] font-mono text-slate-400">${item.sku}</div>
+                    </td>
+                    ${whCells}
+                    <td class="py-2.5 px-1.5 text-center border-l-2 border-slate-200 font-bold text-slate-700">${item.total_physical}</td>
+                    <td class="py-2.5 px-1.5 text-center font-bold text-purple-600">${item.total_reserved_fbs}</td>
+                    <td class="py-2.5 px-1.5 text-center font-black text-emerald-600 bg-emerald-50/30 text-sm">${item.total_available}</td>
+                    <td class="py-2.5 px-1 text-center border-l-2 border-slate-200">
+                        <span class="px-1.5 py-0.5 rounded text-[11px] font-bold ${item.in_transit_between_wh > 0 ? 'bg-blue-100 text-blue-700' : 'text-slate-300'}">${item.in_transit_between_wh}</span>
+                    </td>
+                    <td class="py-2.5 px-1 text-center">
+                        <span class="px-1.5 py-0.5 rounded text-[11px] font-bold ${item.in_transit_fbo > 0 ? 'bg-amber-100 text-amber-700' : 'text-slate-300'}">${item.in_transit_fbo}</span>
+                    </td>
+                    <td class="py-2.5 px-1 text-center">
+                        <span class="px-1.5 py-0.5 rounded text-[11px] font-bold ${item.in_transit_fbs > 0 ? 'bg-purple-100 text-purple-700' : 'text-slate-300'}">${item.in_transit_fbs}</span>
+                    </td>
+                    <td class="py-2.5 px-3 text-right border-l border-slate-100 whitespace-nowrap">
+                        <div class="flex items-center justify-end space-x-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                            <button onclick="openModal('modalIncome', ${item.product_id})" title="Оформить приход" class="w-6 h-6 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px]"><i class="fa-solid fa-plus"></i></button>
+                            <button onclick="openModal('modalMovement', ${item.product_id})" title="Оформить перемещение" class="w-6 h-6 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]"><i class="fa-solid fa-truck-ramp-box"></i></button>
+                            <button onclick="openModal('modalFbs', ${item.product_id})" title="Заказ FBS" class="w-6 h-6 rounded bg-purple-50 hover:bg-purple-100 text-purple-700 flex items-center justify-center text-[10px]"><i class="fa-solid fa-cart-shopping"></i></button>
+                            <button onclick="openModal('modalFbo', ${item.product_id})" title="Отгрузка FBO" class="w-6 h-6 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 flex items-center justify-center text-[10px]"><i class="fa-solid fa-plane-departure"></i></button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // Обновляем верхние сводные цифры
+            document.getElementById('statTotalAvailable').innerText = `${totalAvailableAll} шт.`;
+            document.getElementById('statTransitWh').innerText = `${totalTransitWh} шт.`;
+            document.getElementById('statTransitFbo').innerText = `${totalTransitFbo} шт.`;
+            document.getElementById('statTransitFbs').innerText = `${totalTransitFbs} шт.`;
+        }
+
+        // 2. Загрузка складов
+        async function loadWarehouses() {
+            const res = await fetch('/api/warehouses');
+            warehousesCache = await res.json();
+            const grid = document.getElementById('warehousesGrid');
+            grid.innerHTML = '';
+
+            warehousesCache.forEach(w => {
+                const card = document.createElement('div');
+                card.className = `p-4 rounded-xl border ${w.is_active ? 'bg-white border-slate-200' : 'bg-red-50/40 border-red-200'} shadow-xs space-y-2.5`;
+                card.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-solid fa-warehouse ${w.is_active ? 'text-slate-600' : 'text-red-500'} text-sm"></i>
+                            <span class="font-bold text-slate-900 text-sm">${w.name}</span>
+                        </div>
+                        <span class="px-2 py-0.5 text-[10px] font-bold rounded-full ${w.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}">
+                            ${w.is_active ? 'Активен' : 'В архиве'}
+                        </span>
+                    </div>
+                    <div class="text-[11px] text-slate-400">ID склада: ${w.id}</div>
+                    <div class="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                        <button onclick="promptRenameWarehouse(${w.id}, '${w.name}')" class="text-blue-600 hover:text-blue-800 font-semibold">Переименовать</button>
+                        ${w.is_active ? `
+                            <button onclick="deleteWarehouse(${w.id}, '${w.name}')" class="text-red-600 hover:text-red-800 font-semibold">В архив (Удалить)</button>
+                        ` : '<span class="text-slate-400">В архиве (остатки сохранены)</span>'}
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        // 3. Загрузка отправок и перемещений
+        async function loadShipments() {
+            const [movRes, shipRes] = await Promise.all([
+                fetch('/api/movements'),
+                fetch('/api/shipments')
+            ]);
+            const movements = await movRes.json();
+            const shipments = await shipRes.json();
+
+            // Перемещения
+            const movTbody = document.getElementById('movementsTableBody');
+            movTbody.innerHTML = '';
+            if (movements.length === 0) {
+                movTbody.innerHTML = '<tr><td colspan="7" class="py-6 text-center text-slate-400">Нет перемещений</td></tr>';
+            } else {
+                movements.forEach(m => {
+                    const tr = document.createElement('tr');
+                    const isInTransit = m.status === 'IN_TRANSIT';
+                    tr.className = 'hover:bg-slate-50';
+                    tr.innerHTML = `
+                        <td class="py-2.5 px-3 font-mono text-slate-400">#${m.id}</td>
+                        <td class="py-2.5 px-3 font-semibold text-slate-800">${m.product_name} <span class="font-mono text-slate-400 text-[10px]">(${m.sku})</span></td>
+                        <td class="py-2.5 px-3">${m.from_warehouse_name}</td>
+                        <td class="py-2.5 px-3 font-semibold text-slate-700">${m.to_warehouse_name}</td>
+                        <td class="py-2.5 px-3 text-center font-bold text-slate-900">${m.quantity} шт.</td>
+                        <td class="py-2.5 px-3">
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${isInTransit ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}">
+                                ${isInTransit ? 'В пути' : 'Принято'}
+                            </span>
+                        </td>
+                        <td class="py-2.5 px-3 text-right">
+                            ${isInTransit ? `
+                                <button onclick="receiveMovement(${m.id})" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-semibold shadow-xs">Принять</button>
+                            ` : '<span class="text-slate-400 text-[11px]">Завершено</span>'}
+                        </td>
+                    `;
+                    movTbody.appendChild(tr);
+                });
+            }
+
+            // FBS / FBO
+            const shipTbody = document.getElementById('shipmentsTableBody');
+            shipTbody.innerHTML = '';
+            if (shipments.length === 0) {
+                shipTbody.innerHTML = '<tr><td colspan="7" class="py-6 text-center text-slate-400">Нет отправок FBS или FBO</td></tr>';
+            } else {
+                shipments.forEach(s => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-slate-50';
+                    const isFbs = s.shipment_type === 'FBS';
+
+                    let statusBadge = '';
+                    let actionBtn = '';
+
+                    if (isFbs) {
+                        if (s.status === 'RESERVED') {
+                            statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800">Резерв FBS</span>';
+                            actionBtn = `
+                                <button onclick="shipFbs(${s.id})" class="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-[11px] font-semibold mr-1 shadow-xs">Отправить</button>
+                                <button onclick="cancelFbs(${s.id})" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded text-[11px] font-semibold">Отмена</button>
+                            `;
+                        } else if (s.status === 'SHIPPED_TO_CLIENT') {
+                            statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">В пути клиенту</span>';
+                            actionBtn = `<button onclick="deliverFbs(${s.id})" class="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-semibold shadow-xs">Вручить</button>`;
+                        } else if (s.status === 'DELIVERED') {
+                            statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">Вручен</span>';
+                            actionBtn = '<span class="text-slate-400 text-[11px]">Завершено</span>';
+                        } else {
+                            statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">Отменен</span>';
+                            actionBtn = '-';
+                        }
+                    } else {
+                        if (s.status === 'SHIPPED_TO_MP') {
+                            statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">В пути на WB</span>';
+                            actionBtn = `<button onclick="receiveFbo(${s.id})" class="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-semibold shadow-xs">Принять на WB</button>`;
+                        } else {
+                            statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">Принято маркетплейсом</span>';
+                            actionBtn = '<span class="text-slate-400 text-[11px]">Завершено</span>';
+                        }
+                    }
+
+                    tr.innerHTML = `
+                        <td class="py-2.5 px-3">
+                            <span class="px-1.5 py-0.5 text-[10px] font-black rounded ${isFbs ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-700'}">${s.shipment_type}</span>
+                        </td>
+                        <td class="py-2.5 px-3 font-semibold text-slate-800">${s.product_name} <span class="font-mono text-slate-400 text-[10px]">(${s.sku})</span></td>
+                        <td class="py-2.5 px-3">${s.warehouse_name}</td>
+                        <td class="py-2.5 px-3 text-center font-bold text-slate-900">${s.quantity} шт.</td>
+                        <td class="py-2.5 px-3 text-slate-500 text-[11px]">${s.destination || '-'}</td>
+                        <td class="py-2.5 px-3">${statusBadge}</td>
+                        <td class="py-2.5 px-3 text-right">${actionBtn}</td>
+                    `;
+                    shipTbody.appendChild(tr);
+                });
+            }
+        }
+
+        // 4. Загрузка журнала логов
+        async function loadLogs() {
+            const res = await fetch('/api/logs?limit=50');
+            const logs = await res.json();
+            const tbody = document.getElementById('logsTableBody');
+            tbody.innerHTML = '';
+
+            const opColors = {
+                'INCOME': 'bg-emerald-100 text-emerald-800',
+                'MOVEMENT_SEND': 'bg-blue-100 text-blue-800',
+                'MOVEMENT_RECEIVE': 'bg-teal-100 text-teal-800',
+                'FBS_RESERVE': 'bg-purple-100 text-purple-800',
+                'FBS_CANCEL_RESERVE': 'bg-slate-100 text-slate-700',
+                'FBS_SHIP': 'bg-indigo-100 text-indigo-800',
+                'FBO_SHIP': 'bg-amber-100 text-amber-800',
+                'FBO_RECEIVE': 'bg-green-100 text-green-800'
+            };
+
+            logs.forEach(log => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50';
+                const time = new Date(log.created_at).toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+                const badgeColor = opColors[log.operation_type] || 'bg-slate-100 text-slate-800';
+
+                tr.innerHTML = `
+                    <td class="py-2 px-3 font-mono text-slate-400 text-[11px]">${time}</td>
+                    <td class="py-2 px-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${badgeColor}">${log.operation_type}</span></td>
+                    <td class="py-2 px-3 font-semibold text-slate-800">${log.product_name} <span class="font-mono text-slate-400 text-[10px]">(${log.product_sku})</span></td>
+                    <td class="py-2 px-3 text-slate-600">${log.from_warehouse_name || '-'}</td>
+                    <td class="py-2 px-3 text-slate-600">${log.to_warehouse_name || log.destination_desc || '-'}</td>
+                    <td class="py-2 px-3 text-center font-bold text-slate-900">${log.quantity}</td>
+                    <td class="py-2 px-3 text-slate-500 text-[11px]">${log.comment || '-'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // ОБРАБОТЧИКИ ОПЕРАЦИЙ
+        async function handleIncomeSubmit(e) {
+            e.preventDefault();
+            const payload = {
+                warehouse_id: parseInt(document.getElementById('incomeWarehouse').value),
+                product_id: parseInt(document.getElementById('incomeProduct').value),
+                quantity: parseInt(document.getElementById('incomeQty').value)
+            };
+            const res = await fetch('/api/stock/income', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                closeModal('modalIncome');
+                showToast('Приход успешно оприходован');
+                refreshAll();
+            } else {
+                handleErrorResponse(await res.json());
+            }
+        }
+
+        async function handleMovementSubmit(e) {
+            e.preventDefault();
+            const payload = {
+                from_warehouse_id: parseInt(document.getElementById('movementFromWarehouse').value),
+                to_warehouse_id: parseInt(document.getElementById('movementToWarehouse').value),
+                product_id: parseInt(document.getElementById('movementProduct').value),
+                quantity: parseInt(document.getElementById('movementQty').value),
+                idempotency_key: 'mov_' + Date.now()
+            };
+            const res = await fetch('/api/movements', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                closeModal('modalMovement');
+                showToast('Перемещение отправлено в путь');
+                refreshAll();
+            } else {
+                handleErrorResponse(await res.json());
+            }
+        }
+
+        async function receiveMovement(id) {
+            const res = await fetch(`/api/movements/${id}/receive?idempotency_key=rec_${id}`, {method: 'POST'});
+            if (res.ok) {
+                showToast('Перемещение принято на склад назначения');
+                refreshAll();
+            } else {
+                handleErrorResponse(await res.json());
+            }
+        }
+
+        async function handleFbsSubmit(e) {
+            e.preventDefault();
+            const payload = {
+                warehouse_id: parseInt(document.getElementById('fbsWarehouse').value),
+                product_id: parseInt(document.getElementById('fbsProduct').value),
+                quantity: parseInt(document.getElementById('fbsQty').value),
+                idempotency_key: 'fbs_resv_' + Date.now()
+            };
+            const res = await fetch('/api/shipments/fbs/reserve', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                closeModal('modalFbs');
+                showToast('Товар зарезервирован под заказ FBS');
+                refreshAll();
+            } else {
+                handleErrorResponse(await res.json());
+            }
+        }
+
+        async function shipFbs(id) {
+            const res = await fetch(`/api/shipments/fbs/${id}/ship?idempotency_key=ship_${id}`, {method: 'POST'});
+            if (res.ok) {
+                showToast('Заказ FBS отправлен покупателю');
+                refreshAll();
+            } else {
+                handleErrorResponse(await res.json());
+            }
+        }
+
+        async function cancelFbs(id) {
+            const res = await fetch(`/api/shipments/fbs/${id}/cancel`, {method: 'POST'});
+            if (res.ok) {
+                showToast('Резерв FBS отменён');
+                refreshAll();
+            } else {
+                handleErrorResponse(await res.json());
+            }
+        }
+
+        async function deliverFbs(id) {
+            const res = await fetch(`/api/shipments/fbs/${id}/deliver`, {method: 'POST'});
+            if (res.ok) {
+                showToast('Заказ FBS вручен клиенту');
+                refreshAll();
+            } else {
+                handleErrorResponse(await res.json());
+            }
+        }
+
+        async function handleFboSubmit(e) {
+            e.preventDefault();
+            const payload = {
+                warehouse_id: parseInt(document.getElementById('fboWarehouse').value),
+                product_id: parseInt(document.getElementById('fboProduct').value),
+                destination: document.getElementById('fboDest').value,
+                quantity: parseInt(document.getElementById('fboQty').value),
+                idempotency_key: 'fbo_ship_' + Date.now()
+            };
+            const res = await fetch('/api/shipments/fbo/ship', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                closeModal('modalFbo');
+                showToast('Поставка FBO отгружена на маркетплейс');
+                refreshAll();
+            } else {
+                handleErrorResponse(await res.json());
+            }
+        }
+
+        async function receiveFbo(id) {
+            const res = await fetch(`/api/shipments/fbo/${id}/receive?idempotency_key=rec_fbo_${id}`, {method: 'POST'});
+            if (res.ok) {
+                showToast('Поставка FBO принята маркетплейсом');
+                refreshAll();
+            } else {
+                handleErrorResponse(await res.json());
+            }
+        }
+
+        async function handleAddWarehouse(e) {
+            e.preventDefault();
+            const name = document.getElementById('addWhName').value.trim();
+            const res = await fetch('/api/warehouses', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name})
+            });
+            if (res.ok) {
+                closeModal('modalAddWarehouse');
+                document.getElementById('addWhName').value = '';
+                showToast(`Склад '${name}' успешно создан`);
+                refreshAll();
+            } else {
+                handleErrorResponse(await res.json());
+            }
+        }
+
+        async function promptRenameWarehouse(id, oldName) {
+            const newName = prompt(`Новое имя для склада '${oldName}':`, oldName);
+            if (!newName || newName.trim() === oldName) return;
+            const res = await fetch(`/api/warehouses/${id}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: newName.trim()})
+            });
+            if (res.ok) {
+                showToast('Склад переименован');
+                refreshAll();
+            } else {
+                handleErrorResponse(await res.json());
+            }
+        }
+
+        async function deleteWarehouse(id, name) {
+            if (!confirm(`Перевести склад '${name}' в архив?\nВсе остатки и история операций будут сохранены!`)) return;
+            const res = await fetch(`/api/warehouses/${id}`, {method: 'DELETE'});
+            const data = await res.json();
+            if (res.ok) {
+                showToast(data.message, data.has_remaining_stock ? 'error' : 'success');
+                refreshAll();
+            } else {
+                handleErrorResponse(data);
+            }
+        }
+
+        async function resetData() {
+            if (!confirm('Сбросить базу данных к стартовым данным ТЗ (Север 10/5/0, Юг 6/0/4)?')) return;
+            const res = await fetch('/api/reset', {method: 'POST'});
+            if (res.ok) {
+                showToast('База сброшена к исходным данным ТЗ');
+                refreshAll();
+            }
+        }
+
+        // Обработка нехватки (Smart Shortage)
+        function handleErrorResponse(err) {
+            if (err.error_code === 'STOCK_SHORTAGE') {
+                const modal = document.getElementById('shortageModal');
+                const content = document.getElementById('shortageContent');
+                const transferBtn = document.getElementById('shortageTransferBtn');
+
+                const d = err.details;
+                let altHtml = '';
+                if (d.alternatives && d.alternatives.length > 0) {
+                    altHtml = `
+                        <div class="mt-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900">
+                            <div class="font-bold flex items-center space-x-1.5">
+                                <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                                <span>Товар есть на других складах сети:</span>
+                            </div>
+                            <ul class="list-disc list-inside mt-1 space-y-0.5 text-[11px]">
+                                ${d.alternatives.map(a => `<li>Склад <b>${a.warehouse_name}</b>: доступно <b>${a.available_qty} шт.</b></li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                    transferBtn.classList.remove('hidden');
+                    transferBtn.onclick = () => {
+                        closeShortageModal();
+                        openModal('modalMovement', d.product_id);
+                        document.getElementById('movementFromWarehouse').value = d.alternatives[0].warehouse_id;
+                        document.getElementById('movementQty').value = d.requested_qty - d.available_here;
+                    };
+                } else {
+                    altHtml = `<div class="mt-2 text-xs text-red-600 font-semibold">Товара не хватает по всей сети складов!</div>`;
+                    transferBtn.classList.add('hidden');
+                }
+
+                content.innerHTML = `
+                    <div class="font-semibold text-slate-800">${err.message}</div>
+                    ${altHtml}
+                `;
+                modal.classList.remove('hidden');
+            } else {
+                showToast(err.message || 'Ошибка выполнения операции', 'error');
+            }
+        }
+
+        function refreshAll() {
+            loadOverview();
+            if (currentTab === 'warehouses') loadWarehouses();
+            if (currentTab === 'shipments') loadShipments();
+            if (currentTab === 'logs') loadLogs();
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            loadOverview();
+        });
+    </script>
+</body>
+</html>
