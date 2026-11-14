@@ -1,6 +1,7 @@
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -10,20 +11,22 @@ from app.api.endpoints import api_router
 from app.services.exceptions import StockShortageException, BusinessLogicException
 from app.services.seed_service import SeedService
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Создание таблиц при старте (если не созданы)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Автоматическая загрузка начальных данных по ТЗ, если база пустая
     async with AsyncSessionLocal() as session:
         await SeedService.seed_data(session)
 
     yield
 
-    # Закрытие соединений
     await engine.dispose()
 
 
@@ -34,11 +37,9 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Подключение API роутера
 app.include_router(api_router)
 
 
-# --- Обработчики исключений бизнес-логики ---
 @app.exception_handler(StockShortageException)
 async def stock_shortage_handler(request: Request, exc: StockShortageException):
     return JSONResponse(
@@ -63,7 +64,15 @@ async def business_logic_handler(request: Request, exc: BusinessLogicException):
     )
 
 
-# Базовый healthcheck
+@app.get("/", response_class=HTMLResponse, summary="Главная страница панели управления")
+async def get_index(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={"project_name": settings.PROJECT_NAME}
+    )
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "app": settings.PROJECT_NAME}

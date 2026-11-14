@@ -1,15 +1,29 @@
 from typing import Dict, Any
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.warehouse import Warehouse
 from app.models.product import Product
 from app.models.stock import Stock
+from app.models.movement import WarehouseMovement
+from app.models.shipment import Shipment
 from app.models.history import OperationLog
 
 
 class SeedService:
     """Сервис инициализации демонстрационных данных согласно ТЗ CheckStock"""
+
+    @staticmethod
+    async def reset_data(session: AsyncSession) -> Dict[str, Any]:
+        """Очищает базу и заново накатывает исходные данные из ТЗ"""
+        await session.execute(delete(OperationLog))
+        await session.execute(delete(WarehouseMovement))
+        await session.execute(delete(Shipment))
+        await session.execute(delete(Stock))
+        await session.execute(delete(Product))
+        await session.execute(delete(Warehouse))
+        await session.commit()
+        return await SeedService.seed_data(session)
 
     @staticmethod
     async def seed_data(session: AsyncSession) -> Dict[str, Any]:
